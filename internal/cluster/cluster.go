@@ -17,6 +17,7 @@ package cluster
 import (
 	"encoding/json"
 	"fmt"
+	osLib "os"
 	"reflect"
 	"sort"
 	"strings"
@@ -286,6 +287,8 @@ type ClusterSpec struct {
 	// Additional pg_hba.conf entries
 	// we don't set omitempty since we want to distinguish between null or empty slice
 	PGHBA []string `json:"pgHBA"`
+	// phhba conf file path. This will append the contents of the file at the path to the generated pghba.
+	PGHBAFile *string `json:"pgHBA_file, omitempty"`
 	// Enable automatic pg restart when pg parameters that requires restart changes
 	AutomaticPgRestart *bool `json:"automaticPgRestart"`
 }
@@ -460,6 +463,13 @@ func (os *ClusterSpec) Validate() error {
 	for _, e := range s.PGHBA {
 		if strings.Contains(e, "\n") {
 			return fmt.Errorf("pgHBA entries cannot contain newline characters")
+		}
+	}
+
+	if *s.PGHBAFile != "" {
+		_, err := osLib.Open(*s.PGHBAFile)
+		if osLib.IsNotExist(err) {
+			return fmt.Errorf("given pg_hba conf file does not exist")
 		}
 	}
 

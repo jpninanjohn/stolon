@@ -15,6 +15,7 @@
 package cmd
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -1766,6 +1767,8 @@ func IsMaster(db *cluster.DB) bool {
 // When onlyInternal is true only rules needed for replication will be setup
 // and the traffic should be permitted only for pgSUUsername standard
 // connections and pgReplUsername replication connections.
+// If pg_hba conf file path is given in cluster data, it will append all
+// the contents of the file to the computed hba.
 func (p *PostgresKeeper) generateHBA(cd *cluster.ClusterData, db *cluster.DB, onlyInternal bool) []string {
 	// Minimal entries for local normal and replication connections needed by the stolon keeper
 	// Matched local connections are for postgres database and suUsername user with md5 auth
@@ -1818,6 +1821,29 @@ func (p *PostgresKeeper) generateHBA(cd *cluster.ClusterData, db *cluster.DB, on
 			)
 		}
 	}
+
+	// If pgHBA conf file is given in cluster spec, append its contents to the generated pgHBA content
+	if cd.Cluster.Spec.PGHBAFile != nil {
+		computedHBA = append(computedHBA, fmt.Sprintf("# Appended from given pg_hba file %s", *cd.Cluster.Spec.PGHBAFile))
+		file, err := os.Open(*cd.Cluster.Spec.PGHBAFile)
+		if err != nil {
+			log.Errorw("error opening given pg_hba conf file", zap.Error(err))
+		}
+		defer file.Close()
+
+		scanner := bufio.NewScanner(file)
+		for scanner.Scan() {
+			line := scanner.Text()
+			if !strings.HasPrefix(strings.TrimSpace(line), "#") && line != "" {
+				computedHBA = append(computedHBA, line)
+			}
+		}
+
+		if err := scanner.Err(); err != nil {
+			log.Errorw("error reading from scanner", zap.Error(err))
+		}
+	}
+
 
 	// return generated Hba merged with user Hba
 	return computedHBA
